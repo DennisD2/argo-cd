@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -2366,6 +2367,7 @@ func SetK8SConfigDefaults(config *rest.Config) error {
 func (c *Cluster) RawRestConfig() *rest.Config {
 	var config *rest.Config
 	var err error
+
 	if c.Server == KubernetesInternalAPIServerAddr && os.Getenv(EnvVarFakeInClusterConfig) == "true" {
 		conf, exists := os.LookupEnv("KUBECONFIG")
 		if exists {
@@ -2429,14 +2431,63 @@ func (c *Cluster) RawRestConfig() *rest.Config {
 				},
 			}
 		} else {
-			config = &rest.Config{
-				Host:            c.Server,
-				Username:        c.Config.Username,
-				Password:        c.Config.Password,
-				BearerToken:     c.Config.BearerToken,
-				TLSClientConfig: tlsClientConfig,
+			// Test proxy
+			//
+			// Test config
+			//  PRX_TARGETCLUSTER_INFIX = ocpazrd08
+			//  PRX_PROXY_SCHEME = http
+			//  PRX_PROXY_HOST = <whatever>
+			//
+			clusterToProxyInfixEnvName := "PRX_TARGETCLUSTER_INFIX"
+			clusterProxySchemeEnvName := "PRX_PROXY_SCHEME"
+			clusterProxyHostEnvName := "PRX_PROXY_HOST"
+
+			clusterToProxyInfix, ok := os.LookupEnv(clusterToProxyInfixEnvName)
+			if !ok {
+				fmt.Printf("PRX: Cluster Proxy Infix not set\n")
+
+				config = &rest.Config{
+					Host:            c.Server,
+					Username:        c.Config.Username,
+					Password:        c.Config.Password,
+					BearerToken:     c.Config.BearerToken,
+					TLSClientConfig: tlsClientConfig,
+				}
+			} else {
+				fmt.Printf("PRX: Cluster Proxy Infix set to %s\n", clusterToProxyInfix)
+				if strings.Contains(c.Server, clusterToProxyInfix) {
+					fmt.Printf("PRX: Cluster Proxy Infix set for target cluster %s\n", c.Server)
+
+					// Get proxy Url parts
+					clusterToProxyScheme, ok := os.LookupEnv(clusterProxySchemeEnvName)
+					if !ok {
+						clusterToProxyScheme = "http"
+						fmt.Printf("PRX: Cluster Proxy Scheme not set, using default: %s\n", clusterToProxyScheme)
+					}
+					clusterToProxyHost, ok := os.LookupEnv(clusterProxyHostEnvName)
+					if !ok {
+						clusterToProxyHost = "nono"
+						fmt.Printf("PRX: Cluster Proxy Host not set, using default: %s\n", clusterToProxyHost)
+					}
+
+					fmt.Printf("PRX: Cluster Proxy scheme,host for target cluster %s set to: %s,%s\n", c.Server,
+						clusterToProxyScheme, clusterToProxyHost)
+					proxyURL := url.URL{
+						Scheme: clusterToProxyScheme,
+						Host:   clusterToProxyHost,
+					}
+					config = &rest.Config{
+						Host:            c.Server,
+						Username:        c.Config.Username,
+						Password:        c.Config.Password,
+						BearerToken:     c.Config.BearerToken,
+						TLSClientConfig: tlsClientConfig,
+						Proxy:           http.ProxyURL(&proxyURL),
+					}
+				}
 			}
 		}
+
 	}
 	if err != nil {
 		panic(fmt.Sprintf("Unable to create K8s REST config: %v", err))
