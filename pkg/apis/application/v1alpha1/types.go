@@ -2366,10 +2366,13 @@ func (c *Cluster) RawRestConfig() *rest.Config {
 			clusterProxySchemeEnvName := "PRX_PROXY_SCHEME"
 			clusterProxyHostEnvName := "PRX_PROXY_HOST"
 
-			clusterToProxyInfix, ok := os.LookupEnv(clusterToProxyInfixEnvName)
-			if !ok {
-				fmt.Printf("PRX: Cluster Proxy Infix not set\n")
-
+			clusterNeedsProxy := false
+			clusterToProxyInfix, infixSet := os.LookupEnv(clusterToProxyInfixEnvName)
+			if infixSet {
+				clusterNeedsProxy = strings.Contains(c.Server, clusterToProxyInfix)
+			}
+			if !clusterNeedsProxy {
+				fmt.Printf("PRX: Cluster %s needs no proxy or Proxy Infix not set\n", c.Server)
 				config = &rest.Config{
 					Host:            c.Server,
 					Username:        c.Config.Username,
@@ -2378,36 +2381,33 @@ func (c *Cluster) RawRestConfig() *rest.Config {
 					TLSClientConfig: tlsClientConfig,
 				}
 			} else {
-				fmt.Printf("PRX: Cluster Proxy Infix set to %s\n", clusterToProxyInfix)
-				if strings.Contains(c.Server, clusterToProxyInfix) {
-					fmt.Printf("PRX: Cluster Proxy Infix set for target cluster %s\n", c.Server)
+				fmt.Printf("PRX: Cluster %s needs proxy\n", c.Server)
 
-					// Get proxy Url parts
-					clusterToProxyScheme, ok := os.LookupEnv(clusterProxySchemeEnvName)
-					if !ok {
-						clusterToProxyScheme = "http"
-						fmt.Printf("PRX: Cluster Proxy Scheme not set, using default: %s\n", clusterToProxyScheme)
-					}
-					clusterToProxyHost, ok := os.LookupEnv(clusterProxyHostEnvName)
-					if !ok {
-						clusterToProxyHost = "nono"
-						fmt.Printf("PRX: Cluster Proxy Host not set, using default: %s\n", clusterToProxyHost)
-					}
+				// Get proxy Url parts
+				clusterToProxyScheme, ok := os.LookupEnv(clusterProxySchemeEnvName)
+				if !ok {
+					clusterToProxyScheme = "http"
+					fmt.Printf("PRX: Cluster Proxy Scheme not set, using default: %s\n", clusterToProxyScheme)
+				}
+				clusterToProxyHost, ok := os.LookupEnv(clusterProxyHostEnvName)
+				if !ok {
+					clusterToProxyHost = "nono"
+					fmt.Printf("PRX: Cluster Proxy Host not set, using default: %s\n", clusterToProxyHost)
+				}
 
-					fmt.Printf("PRX: Cluster Proxy scheme,host for target cluster %s set to: %s,%s\n", c.Server,
-						clusterToProxyScheme, clusterToProxyHost)
-					proxyURL := url.URL{
-						Scheme: clusterToProxyScheme,
-						Host:   clusterToProxyHost,
-					}
-					config = &rest.Config{
-						Host:            c.Server,
-						Username:        c.Config.Username,
-						Password:        c.Config.Password,
-						BearerToken:     c.Config.BearerToken,
-						TLSClientConfig: tlsClientConfig,
-						Proxy:           http.ProxyURL(&proxyURL),
-					}
+				fmt.Printf("PRX: Cluster Proxy scheme,host for target cluster %s set to: %s,%s\n", c.Server,
+					clusterToProxyScheme, clusterToProxyHost)
+				proxyURL := url.URL{
+					Scheme: clusterToProxyScheme,
+					Host:   clusterToProxyHost,
+				}
+				config = &rest.Config{
+					Host:            c.Server,
+					Username:        c.Config.Username,
+					Password:        c.Config.Password,
+					BearerToken:     c.Config.BearerToken,
+					TLSClientConfig: tlsClientConfig,
+					Proxy:           http.ProxyURL(&proxyURL),
 				}
 			}
 		}
