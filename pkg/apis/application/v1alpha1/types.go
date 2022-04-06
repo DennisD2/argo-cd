@@ -2266,8 +2266,14 @@ func SetK8SConfigDefaults(config *rest.Config) error {
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).DialContext
+
+	proxyInUse := http.ProxyFromEnvironment
+	if config.Proxy != nil {
+		proxyInUse = config.Proxy
+	}
+
 	transport := utilnet.SetTransportDefaults(&http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
+		Proxy:               proxyInUse,
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig:     tlsConfig,
 		MaxIdleConns:        K8sMaxIdleConnections,
